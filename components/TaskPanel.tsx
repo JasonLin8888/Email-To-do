@@ -150,6 +150,19 @@ export default function TaskPanel({
 
   const todoCount = tasks.filter((t) => t.status !== 'done').length;
 
+  // Callers should handle id='' as a new task creation signal
+  const handleAddTask = () => {
+    const title = prompt('Task title:');
+    if (title?.trim()) {
+      onTaskUpdate('', {
+        title: title.trim(),
+        status: 'todo',
+        description: '',
+        customFields: {},
+      } as Partial<EmailTask>);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full bg-white border-l border-gray-200">
       {/* Header */}
@@ -245,19 +258,7 @@ export default function TaskPanel({
       {/* Add task button */}
       <div className="px-4 py-3 border-t border-gray-200 shrink-0">
         <button
-          onClick={() => {
-            const title = prompt('Task title:');
-            if (title?.trim()) {
-              // Emit a synthetic "add" by calling onTaskUpdate with a temp id
-              // Callers should handle id='' as a new task creation signal
-              onTaskUpdate('', {
-                title: title.trim(),
-                status: 'todo',
-                description: '',
-                customFields: {},
-              } as Partial<EmailTask>);
-            }
-          }}
+          onClick={handleAddTask}
           className="flex items-center gap-2 w-full text-sm text-[#1a73e8] hover:bg-blue-50 rounded-lg px-3 py-2 transition-colors"
         >
           <Plus size={16} />

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import DOMPurify from 'dompurify';
 import { ArrowLeft, Reply, Archive, Trash2, CheckSquare } from 'lucide-react';
 import type { MessageDetail } from '@/lib/email/types';
 
@@ -175,10 +176,10 @@ export default function MessageView({
               </div>
             </div>
 
-            {/* Body — ⚠️ In production, sanitize with DOMPurify before rendering */}
+            {/* Body — sanitized with DOMPurify to prevent XSS */}
             <div
               className="prose prose-sm max-w-none text-gray-800 leading-relaxed"
-              dangerouslySetInnerHTML={{ __html: message.body }}
+              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(message.body) }}
             />
           </div>
         ) : null}
