@@ -57,10 +57,7 @@ export default function MailRow({
       onClick={onClick}
     >
       {/* Checkbox */}
-      <div
-        className="shrink-0 w-5 h-5 flex items-center justify-center"
-        onClick={(e) => { e.stopPropagation(); onSelect(); }}
-      >
+      <div className="shrink-0 w-5 h-5 flex items-center justify-center">
         <input
           type="checkbox"
           checked={selected}

@@ -107,7 +107,7 @@ export async function listMessages(
   const messages: MessageSummary[] = (data.data ?? []).map(mapMessage);
   return {
     messages,
-    total: data.request_id ? undefined : undefined, // Nylas v3 doesn't reliably return total count
+    total: undefined, // Nylas v3 doesn't reliably return total count
     offset,
     limit,
     nextCursor: data.next_cursor,
@@ -262,7 +262,7 @@ export function inferTaskFromEmail(
     const match = fullText.match(pattern);
     if (match) {
       const parsed = new Date(match[1]);
-      if (!isNaN(parsed.getTime())) {
+      if (!Number.isNaN(parsed.getTime())) {
         deadline = parsed.toISOString().split('T')[0];
         break;
       }

@@ -10,6 +10,7 @@ interface TaskPanelProps {
   onTaskUpdate: (id: string, updates: Partial<EmailTask>) => void;
   onTaskDelete: (id: string) => void;
   onAddField: (field: Omit<TaskFieldDefinition, 'id'>) => void;
+  onAddTask: (title: string) => void;
   onOpenEmail?: (messageId: string) => void;
   loading: boolean;
 }
@@ -70,7 +71,10 @@ function TaskRow({
             value={titleDraft}
             onChange={(e) => setTitleDraft(e.target.value)}
             onBlur={commitTitle}
-            onKeyDown={(e) => { if (e.key === 'Enter') commitTitle(); if (e.key === 'Escape') setEditing(false); }}
+            onKeyDown={(e) => {
+                if (e.key === 'Enter') commitTitle();
+                if (e.key === 'Escape') setEditing(false);
+              }}
             className="w-full text-sm border-b border-blue-400 outline-none bg-transparent text-gray-900 py-0.5"
           />
         ) : (
@@ -133,6 +137,7 @@ export default function TaskPanel({
   onTaskUpdate,
   onTaskDelete,
   onAddField,
+  onAddTask,
   onOpenEmail,
   loading,
 }: TaskPanelProps) {
@@ -150,16 +155,10 @@ export default function TaskPanel({
 
   const todoCount = tasks.filter((t) => t.status !== 'done').length;
 
-  // Callers should handle id='' as a new task creation signal
   const handleAddTask = () => {
-    const title = prompt('Task title:');
+    const title = window.prompt('Task title:');
     if (title?.trim()) {
-      onTaskUpdate('', {
-        title: title.trim(),
-        status: 'todo',
-        description: '',
-        customFields: {},
-      } as Partial<EmailTask>);
+      onAddTask(title.trim());
     }
   };
 
