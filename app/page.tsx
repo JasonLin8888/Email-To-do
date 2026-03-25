@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import type { MouseEvent as ReactMouseEvent } from 'react';
 import { Settings, UserCircle } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
 import SearchBar from '@/components/SearchBar';
@@ -11,7 +12,10 @@ import ComposeModal from '@/components/ComposeModal';
 import TaskPanel from '@/components/TaskPanel';
 import { MessageSummary, EmailTask, TaskFieldDefinition } from '@/lib/email/types';
 
-const LIMIT = 50;
+const LIMIT = 20;
+const TASK_PANEL_MIN_WIDTH = 280;
+const TASK_PANEL_MAX_WIDTH = 560;
+const MIN_EMAIL_PANEL_WIDTH = 420;
 
 export default function Home() {
   // ── Layout state ─────────────────────────────────────────────────────────
@@ -38,6 +42,9 @@ export default function Home() {
   const [tasks, setTasks] = useState<EmailTask[]>([]);
   const [taskFields, setTaskFields] = useState<TaskFieldDefinition[]>([]);
   const [tasksLoading, setTasksLoading] = useState(true);
+  const [taskPanelWidth, setTaskPanelWidth] = useState(320);
+  const [isResizingTaskPanel, setIsResizingTaskPanel] = useState(false);
+  const splitPaneRef = useRef<HTMLDivElement | null>(null);
 
   // ── Fetch messages ───────────────────────────────────────────────────────
   const fetchMessages = useCallback(async () => {
@@ -118,7 +125,6 @@ export default function Home() {
 
   // ── Pagination ───────────────────────────────────────────────────────────
   const hasNext = messages.length === LIMIT; // if we got a full page, there might be more
-  const hasPrev = offset > 0;
 
   // ── Email actions ────────────────────────────────────────────────────────
   const handleDelete = async (id: string) => {
@@ -161,6 +167,11 @@ export default function Home() {
     }
   };
 
+  const handleAddToCalendar = (messageId: string) => {
+    // Placeholder hook for future Google Calendar integration.
+    console.info('Add to Calendar clicked for message:', messageId);
+  };
+
   // ── Selection ────────────────────────────────────────────────────────────
   const handleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -187,7 +198,21 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates),
       });
-      if (!res.ok) throw new Error();
+
+      if (!res.ok) {
+        const message = await res.text();
+
+        // If task IDs drifted due dev hot reload state, refresh local task list.
+        if (res.status === 404) {
+          const tasksRes = await fetch('/api/tasks');
+          if (tasksRes.ok) {
+            setTasks(await tasksRes.json());
+          }
+        }
+
+        throw new Error(message || `HTTP ${res.status}`);
+      }
+
       const updated = await res.json();
       setTasks((prev) => prev.map((t) => (t.id === id ? updated : t)));
     } catch (err) {
@@ -227,12 +252,48 @@ export default function Home() {
         body: JSON.stringify(field),
       });
       if (!res.ok) throw new Error();
-      const newField = await res.json();
-      setTaskFields((prev) => [...prev, newField]);
+      await res.json();
+
+      // Re-fetch definitions so UI stays consistent with server state.
+      const fieldsRes = await fetch('/api/tasks/fields');
+      if (!fieldsRes.ok) throw new Error();
+      setTaskFields(await fieldsRes.json());
     } catch (err) {
       console.error('Add field failed:', err);
     }
   };
+
+  const handleTaskPanelResizeStart = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+
+    const container = splitPaneRef.current;
+    if (!container) return;
+
+    const startX = event.clientX;
+    const startWidth = taskPanelWidth;
+    const containerWidth = container.getBoundingClientRect().width;
+    const maxWidth = Math.min(
+      TASK_PANEL_MAX_WIDTH,
+      Math.max(TASK_PANEL_MIN_WIDTH, containerWidth - MIN_EMAIL_PANEL_WIDTH)
+    );
+
+    setIsResizingTaskPanel(true);
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      const delta = startX - moveEvent.clientX;
+      const nextWidth = Math.min(maxWidth, Math.max(TASK_PANEL_MIN_WIDTH, startWidth + delta));
+      setTaskPanelWidth(nextWidth);
+    };
+
+    const onMouseUp = () => {
+      setIsResizingTaskPanel(false);
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  }, [taskPanelWidth]);
 
   const folderDisplayName: Record<string, string> = {
     INBOX: 'Inbox',
@@ -294,7 +355,7 @@ export default function Home() {
         </header>
 
         {/* Email area + Task Panel */}
-        <div className="flex flex-1 min-h-0 gap-2 px-2 pb-2">
+        <div ref={splitPaneRef} className="flex flex-1 min-h-0 gap-2 px-2 pb-2">
           {/* Email column */}
           <div className="flex flex-col flex-1 min-w-0 bg-white rounded-2xl overflow-hidden shadow-sm">
             {openMessageId ? (
@@ -302,6 +363,7 @@ export default function Home() {
                 messageId={openMessageId}
                 onBack={() => setOpenMessageId(null)}
                 onAddToTodo={() => handleAddToTodo(openMessageId)}
+                onAddToCalendar={() => handleAddToCalendar(openMessageId)}
                 onDelete={() => handleDelete(openMessageId)}
                 onArchive={() => handleArchive(openMessageId)}
               />
@@ -344,13 +406,30 @@ export default function Home() {
                   onArchive={handleArchive}
                   onToggleRead={handleToggleRead}
                   onAddToTodo={handleAddToTodo}
+                  onAddToCalendar={handleAddToCalendar}
+                  onDragStart={() => {
+                    // Handler is passed so rows can trigger native drag with message metadata.
+                  }}
                 />
               </>
             )}
           </div>
 
+          <div
+            role="separator"
+            aria-label="Resize to-do panel"
+            aria-orientation="vertical"
+            onMouseDown={handleTaskPanelResizeStart}
+            className={`mx-1 my-1 w-1.5 shrink-0 cursor-col-resize rounded-full transition-colors ${
+              isResizingTaskPanel ? 'bg-blue-300' : 'bg-transparent hover:bg-blue-200'
+            }`}
+          />
+
           {/* TASK PANEL */}
-          <div className="w-80 shrink-0">
+          <div
+            className="shrink-0"
+            style={{ width: taskPanelWidth }}
+          >
             <TaskPanel
               tasks={tasks}
               fields={taskFields}
@@ -358,6 +437,7 @@ export default function Home() {
               onTaskDelete={handleTaskDelete}
               onAddField={handleAddField}
               onAddTask={handleAddTask}
+              onEmailDrop={handleAddToTodo}
               onOpenEmail={(messageId) => {
                 setOpenMessageId(messageId);
                 setComposeOpen(false);

@@ -18,7 +18,25 @@ import {
 
 const API_KEY = process.env.NYLAS_API_KEY!;
 const GRANT_ID = process.env.NYLAS_GRANT_ID!;
-const BASE_URL = process.env.NYLAS_API_BASE_URL ?? 'https://api.nylas.com';
+const MAX_MESSAGE_PAGE_SIZE = 20;
+
+function normalizeNylasBaseUrl(rawBaseUrl?: string): string {
+  const fallback = 'https://api.us.nylas.com';
+  const base = (rawBaseUrl ?? fallback).trim();
+
+  // Nylas v3 requires a regional host. `api.nylas.com` returns 404.
+  if (/^https:\/\/api\.nylas\.com\/?$/i.test(base)) {
+    return fallback;
+  }
+
+  return base.replace(/\/$/, '');
+}
+
+const BASE_URL = normalizeNylasBaseUrl(process.env.NYLAS_API_BASE_URL);
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 // ─── Base fetch helper ────────────────────────────────────────────────────────
 
@@ -27,23 +45,39 @@ async function nylasRequest<T>(
   options: RequestInit = {}
 ): Promise<T> {
   const url = `${BASE_URL}${path}`;
-  const res = await fetch(url, {
-    ...options,
-    headers: {
-      Authorization: `Bearer ${API_KEY}`,
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-      ...(options.headers ?? {}),
-    },
-  });
+  const maxAttempts = 3;
 
-  if (!res.ok) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const res = await fetch(url, {
+      ...options,
+      headers: {
+        Authorization: `Bearer ${API_KEY}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        ...(options.headers ?? {}),
+      },
+    });
+
+    if (res.ok) {
+      if (res.status === 204) return {} as T;
+      return res.json() as Promise<T>;
+    }
+
     const text = await res.text();
+
+    if (res.status === 429 && attempt < maxAttempts) {
+      const retryAfterSeconds = Number(res.headers.get('retry-after') ?? '0');
+      const waitMs = retryAfterSeconds > 0
+        ? retryAfterSeconds * 1000
+        : Math.min(300 * (2 ** (attempt - 1)), 2000);
+      await sleep(waitMs);
+      continue;
+    }
+
     throw new Error(`Nylas API error ${res.status}: ${text}`);
   }
 
-  if (res.status === 204) return {} as T;
-  return res.json() as Promise<T>;
+  throw new Error('Nylas API error 429: retry attempts exhausted');
 }
 
 // ─── Message mapping ──────────────────────────────────────────────────────────
@@ -91,10 +125,11 @@ function mapMessageDetail(raw: any): MessageDetail {
 export async function listMessages(
   params: ListMessagesParams = {}
 ): Promise<PaginatedMessages> {
-  const { folder, limit = 50, offset = 0, query } = params;
+  const { folder, limit = MAX_MESSAGE_PAGE_SIZE, offset = 0, query } = params;
+  const safeLimit = Math.min(Math.max(limit, 1), MAX_MESSAGE_PAGE_SIZE);
 
   const qs = new URLSearchParams();
-  qs.set('limit', String(limit));
+  qs.set('limit', String(safeLimit));
   qs.set('offset', String(offset));
   if (folder) qs.set('in', folder);
   if (query) qs.set('q', query);
@@ -109,7 +144,7 @@ export async function listMessages(
     messages,
     total: undefined, // Nylas v3 doesn't reliably return total count
     offset,
-    limit,
+    limit: safeLimit,
     nextCursor: data.next_cursor,
   };
 }
@@ -129,8 +164,11 @@ export async function getThread(threadId: string): Promise<MessageDetail[]> {
   );
   const raw = data.data ?? data;
   const messageIds: string[] = raw.message_ids ?? raw.draft_ids ?? [];
-  // Fetch full messages for the thread
-  const messages = await Promise.all(messageIds.map((id) => getMessage(id)));
+  // Fetch full messages sequentially to avoid concurrent-request rate limits.
+  const messages: MessageDetail[] = [];
+  for (const id of messageIds) {
+    messages.push(await getMessage(id));
+  }
   return messages;
 }
 

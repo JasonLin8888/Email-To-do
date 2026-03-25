@@ -12,6 +12,10 @@ interface TaskEditorProps {
   onOpenEmail?: (messageId: string) => void;
 }
 
+function hasValidSourceLink(task: EmailTask): boolean {
+  return Boolean(task.sourceLink?.messageId?.trim());
+}
+
 export default function TaskEditor({
   task,
   fields,
@@ -162,7 +166,7 @@ export default function TaskEditor({
           )}
 
           {/* Source email */}
-          {task.sourceLink && (
+          {hasValidSourceLink(task) && (
             <div className="pt-2 border-t border-gray-100">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
                 Source Email

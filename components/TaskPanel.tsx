@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import type { DragEvent } from 'react';
 import { Settings, Trash2, ExternalLink, Plus, CheckCircle2, Circle } from 'lucide-react';
 import type { EmailTask, TaskFieldDefinition } from '@/lib/email/types';
 
@@ -11,6 +12,7 @@ interface TaskPanelProps {
   onTaskDelete: (id: string) => void;
   onAddField: (field: Omit<TaskFieldDefinition, 'id'>) => void;
   onAddTask: (title: string) => void;
+  onEmailDrop?: (messageId: string) => void;
   onOpenEmail?: (messageId: string) => void;
   loading: boolean;
 }
@@ -26,6 +28,10 @@ const STATUS_COLORS: Record<EmailTask['status'], string> = {
   in_progress: 'text-yellow-500',
   done: 'text-green-500',
 };
+
+function hasValidSourceLink(task: EmailTask): boolean {
+  return Boolean(task.sourceLink?.messageId?.trim());
+}
 
 function TaskRow({
   task,
@@ -52,8 +58,16 @@ function TaskRow({
 
   const isDone = task.status === 'done';
 
+  const commitCustomField = (fieldId: string, value: string) => {
+    const nextCustomFields = {
+      ...(task.customFields ?? {}),
+      [fieldId]: value,
+    };
+    onUpdate({ customFields: nextCustomFields });
+  };
+
   return (
-    <div className="flex items-center gap-2 px-3 py-2.5 border-b border-gray-100 hover:bg-gray-50 group transition-colors">
+    <div className="min-w-max flex items-center gap-2 px-3 py-2.5 border-b border-gray-100 hover:bg-gray-50 group transition-colors">
       {/* Status toggle */}
       <button
         onClick={() => onUpdate({ status: STATUS_CYCLE[task.status] })}
@@ -64,7 +78,7 @@ function TaskRow({
       </button>
 
       {/* Title */}
-      <div className="flex-1 min-w-0">
+      <div className="w-56 shrink-0 min-w-0">
         {editing ? (
           <input
             autoFocus
@@ -79,7 +93,10 @@ function TaskRow({
           />
         ) : (
           <span
-            onClick={() => setEditing(true)}
+            onClick={() => {
+              setTitleDraft(task.title);
+              setEditing(true);
+            }}
             className={`text-sm cursor-text truncate block ${isDone ? 'line-through text-gray-400' : 'text-gray-800'}`}
           >
             {task.title || '(untitled)'}
@@ -87,7 +104,7 @@ function TaskRow({
         )}
 
         {/* Source email */}
-        {task.sourceLink && (
+        {hasValidSourceLink(task) ? (
           <div className="flex items-center gap-1 mt-0.5">
             <span className="text-xs text-gray-400 truncate">
               {task.sourceLink.sender} — {task.sourceLink.subject}
@@ -102,22 +119,65 @@ function TaskRow({
               </button>
             )}
           </div>
+        ) : (
+          <div className="mt-0.5">
+            <span className="text-xs text-gray-400">Not linked to an email</span>
+          </div>
         )}
       </div>
 
-      {/* Deadline */}
-      {task.deadline && (
-        <span className="text-xs text-gray-500 shrink-0 hidden sm:block">
-          {new Date(task.deadline).toLocaleDateString([], { month: 'short', day: 'numeric' })}
-        </span>
-      )}
+      {/* Status + deadline */}
+      <div className="flex items-center gap-2 shrink-0">
+        <select
+          value={task.status}
+          onChange={(e) => onUpdate({ status: e.target.value as EmailTask['status'] })}
+          className="w-28 text-xs border border-gray-300 rounded px-1.5 py-0.5 bg-white text-gray-700"
+          title="Task status"
+        >
+          <option value="todo">To Do</option>
+          <option value="in_progress">In Progress</option>
+          <option value="done">Done</option>
+        </select>
+        <input
+          type="date"
+          value={task.deadline ?? ''}
+          onChange={(e) => onUpdate({ deadline: e.target.value || undefined })}
+          className="w-28 text-xs border border-gray-300 rounded px-1.5 py-0.5 bg-white text-gray-700 shrink-0"
+          title="Due date"
+        />
+      </div>
 
       {/* Custom field values */}
-      {fields.map((f) => (
-        <span key={f.id} className="text-xs text-gray-500 shrink-0 hidden md:block max-w-[80px] truncate">
-          {task.customFields?.[f.id] ?? '—'}
-        </span>
-      ))}
+      {fields.map((f) => {
+        const value = task.customFields?.[f.id] ?? '';
+        if (f.type === 'select') {
+          return (
+            <select
+              key={f.id}
+              value={value}
+              onChange={(e) => commitCustomField(f.id, e.target.value)}
+              className="w-28 text-xs border border-gray-300 rounded px-1.5 py-0.5 bg-white text-gray-700 shrink-0"
+              title={f.name}
+            >
+              <option value="">—</option>
+              {(f.options ?? []).map((opt) => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
+            </select>
+          );
+        }
+
+        return (
+          <input
+            key={f.id}
+            type={f.type === 'date' ? 'date' : f.type === 'number' ? 'number' : 'text'}
+            defaultValue={value}
+            onBlur={(e) => commitCustomField(f.id, e.target.value)}
+            className="w-28 text-xs border border-gray-300 rounded px-1.5 py-0.5 bg-white text-gray-700 shrink-0"
+            title={f.name}
+          />
+        );
+      })}
 
       {/* Delete */}
       <button
@@ -138,12 +198,14 @@ export default function TaskPanel({
   onTaskDelete,
   onAddField,
   onAddTask,
+  onEmailDrop,
   onOpenEmail,
   loading,
 }: TaskPanelProps) {
   const [showFieldForm, setShowFieldForm] = useState(false);
   const [newFieldName, setNewFieldName] = useState('');
   const [newFieldType, setNewFieldType] = useState<TaskFieldDefinition['type']>('text');
+  const [isDragOver, setIsDragOver] = useState(false);
 
   const handleAddField = () => {
     if (!newFieldName.trim()) return;
@@ -162,8 +224,35 @@ export default function TaskPanel({
     }
   };
 
+  const getDraggedMessageId = (event: DragEvent<HTMLDivElement>) => {
+    return event.dataTransfer.getData('application/x-email-message-id') || event.dataTransfer.getData('text/plain');
+  };
+
+  const canDropEmail = (event: DragEvent<HTMLDivElement>) => {
+    if (!onEmailDrop) return false;
+    return event.dataTransfer.types.includes('application/x-email-message-id') || event.dataTransfer.types.includes('text/plain');
+  };
+
   return (
-    <div className="flex flex-col h-full bg-white border-l border-gray-200">
+    <div
+      className={`flex flex-col h-full bg-white border-l border-gray-200 transition-colors ${isDragOver ? 'bg-blue-50' : ''}`}
+      onDragOver={(event) => {
+        if (!canDropEmail(event)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'copy';
+        if (!isDragOver) setIsDragOver(true);
+      }}
+      onDragLeave={() => setIsDragOver(false)}
+      onDrop={(event) => {
+        if (!canDropEmail(event)) return;
+        event.preventDefault();
+        setIsDragOver(false);
+        const messageId = getDraggedMessageId(event).trim();
+        if (messageId) {
+          onEmailDrop?.(messageId);
+        }
+      }}
+    >
       {/* Header */}
       <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-200 shrink-0">
         <h2 className="font-semibold text-gray-800 text-sm">Tasks</h2>
@@ -190,7 +279,7 @@ export default function TaskPanel({
             placeholder="Field name"
             value={newFieldName}
             onChange={(e) => setNewFieldName(e.target.value)}
-            className="border border-gray-300 rounded-md px-2 py-1 text-sm focus:outline-none focus:border-blue-400 flex-1 min-w-[100px]"
+            className="border border-gray-300 rounded-md px-2 py-1 text-sm focus:outline-none focus:border-blue-400 flex-1 min-w-25"
           />
           <select
             value={newFieldType}
@@ -211,20 +300,8 @@ export default function TaskPanel({
         </div>
       )}
 
-      {/* Column headers */}
-      {fields.length > 0 && (
-        <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 border-b border-gray-100 text-xs text-gray-500 font-medium">
-          <div className="w-4 shrink-0" />
-          <div className="flex-1">Task</div>
-          {fields.map((f) => (
-            <div key={f.id} className="w-20 shrink-0 hidden md:block truncate">{f.name}</div>
-          ))}
-          <div className="w-4 shrink-0" />
-        </div>
-      )}
-
       {/* Task list */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-auto">
         {loading ? (
           <div className="flex flex-col gap-0">
             {Array.from({ length: 5 }).map((_, i) => (
@@ -241,16 +318,29 @@ export default function TaskPanel({
             <p className="text-xs text-center px-4">Add emails to your to-do list using the task button.</p>
           </div>
         ) : (
-          tasks.map((task) => (
-            <TaskRow
-              key={task.id}
-              task={task}
-              fields={fields}
-              onUpdate={(updates) => onTaskUpdate(task.id, updates)}
-              onDelete={() => onTaskDelete(task.id)}
-              onOpenEmail={onOpenEmail}
-            />
-          ))
+          <div className="min-w-max">
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 border-b border-gray-100 text-xs text-gray-500 font-medium">
+              <div className="w-5 shrink-0" />
+              <div className="w-56 shrink-0">Task</div>
+              <div className="w-28 shrink-0">Status</div>
+              <div className="w-20 shrink-0">Due</div>
+              {fields.map((f) => (
+                <div key={f.id} className="w-28 shrink-0 truncate">{f.name}</div>
+              ))}
+              <div className="w-5 shrink-0" />
+            </div>
+
+            {tasks.map((task) => (
+              <TaskRow
+                key={task.id}
+                task={task}
+                fields={fields}
+                onUpdate={(updates) => onTaskUpdate(task.id, updates)}
+                onDelete={() => onTaskDelete(task.id)}
+                onOpenEmail={onOpenEmail}
+              />
+            ))}
+          </div>
         )}
       </div>
 
@@ -263,6 +353,7 @@ export default function TaskPanel({
           <Plus size={16} />
           Add new task
         </button>
+        <p className="mt-2 text-xs text-gray-400">Tip: drag an email here to add it as a task.</p>
       </div>
     </div>
   );

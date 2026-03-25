@@ -23,6 +23,8 @@ const FOLDER_LABELS: Record<string, string> = {
   TRASH: 'Trash',
 };
 
+const numberFormatter = new Intl.NumberFormat('en-US');
+
 export default function MailToolbar({
   folder,
   total,
@@ -38,8 +40,8 @@ export default function MailToolbar({
 }: MailToolbarProps) {
   const from = offset + 1;
   const to = offset + limit;
-  const totalLabel = total != null ? `of ${total.toLocaleString()}` : '';
-  const rangeLabel = `${from.toLocaleString()}–${to.toLocaleString()} ${totalLabel}`;
+  const totalLabel = total != null ? `of ${numberFormatter.format(total)}` : '';
+  const rangeLabel = `${numberFormatter.format(from)}–${numberFormatter.format(to)} ${totalLabel}`;
   const hasPrev = offset > 0;
 
   return (
@@ -76,7 +78,7 @@ export default function MailToolbar({
 
       {/* Right side — pagination */}
       <div className="flex items-center gap-1 text-sm text-gray-600">
-        <span className="mr-1">{rangeLabel}</span>
+        <span className="mr-1" suppressHydrationWarning>{rangeLabel}</span>
 
         <button
           onClick={onPrev}

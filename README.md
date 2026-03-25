@@ -22,18 +22,12 @@ npm install
 
 ### 2. Configure environment variables
 
-Copy `.env.example` to `.env` and fill in your Nylas credentials:
-
-```bash
-cp .env.example .env
-```
-
-Edit `.env`:
+Create or edit `.env` with your Nylas credentials:
 
 ```
 NYLAS_API_KEY=your_nylas_api_key_here
 NYLAS_GRANT_ID=your_nylas_grant_id_here
-NYLAS_API_BASE_URL=https://api.nylas.com
+NYLAS_API_BASE_URL=https://api.us.nylas.com
 ```
 
 ### 3. Run in development mode

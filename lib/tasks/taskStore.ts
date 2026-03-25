@@ -11,6 +11,12 @@
 
 import { EmailTask, TaskFieldDefinition, TaskStatus } from '../email/types';
 
+type TaskStoreState = {
+  tasks: Map<string, EmailTask>;
+  fields: Map<string, TaskFieldDefinition>;
+  seeded: boolean;
+};
+
 // ─── Tiny UUID helper ─────────────────────────────────────────────────────────
 function newId(): string {
   // crypto.randomUUID() is available in Node 19+ and modern browsers
@@ -22,8 +28,20 @@ function newId(): string {
 
 // ─── In-memory stores ─────────────────────────────────────────────────────────
 
-const tasks = new Map<string, EmailTask>();
-const fields = new Map<string, TaskFieldDefinition>();
+const globalTaskStore = globalThis as typeof globalThis & {
+  __emailTodoTaskStore?: TaskStoreState;
+};
+
+const store: TaskStoreState = globalTaskStore.__emailTodoTaskStore ?? {
+  tasks: new Map<string, EmailTask>(),
+  fields: new Map<string, TaskFieldDefinition>(),
+  seeded: false,
+};
+
+globalTaskStore.__emailTodoTaskStore = store;
+
+const tasks = store.tasks;
+const fields = store.fields;
 
 // Seed a few default custom field definitions
 const defaultFields: TaskFieldDefinition[] = [
@@ -34,7 +52,10 @@ const defaultFields: TaskFieldDefinition[] = [
   { id: 'field-project', name: 'Project', type: 'text' },
   { id: 'field-group', name: 'Group Members', type: 'text' },
 ];
-for (const f of defaultFields) fields.set(f.id, f);
+if (!store.seeded) {
+  for (const f of defaultFields) fields.set(f.id, f);
+  store.seeded = true;
+}
 
 // ─── Tasks ────────────────────────────────────────────────────────────────────
 

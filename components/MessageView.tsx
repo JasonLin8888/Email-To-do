@@ -2,26 +2,30 @@
 
 import { useEffect, useState } from 'react';
 import DOMPurify from 'dompurify';
-import { ArrowLeft, Reply, Archive, Trash2, CheckSquare } from 'lucide-react';
+import { ArrowLeft, Reply, Archive, Trash2, CheckSquare, CalendarPlus } from 'lucide-react';
 import type { MessageDetail } from '@/lib/email/types';
 
 interface MessageViewProps {
   messageId: string;
   onBack: () => void;
   onAddToTodo: () => void;
+  onAddToCalendar: () => void;
   onDelete: () => void;
   onArchive: () => void;
 }
 
+const messageDateFormatter = new Intl.DateTimeFormat('en-US', {
+  weekday: 'short',
+  year: 'numeric',
+  month: 'short',
+  day: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  timeZone: 'UTC',
+});
+
 function formatDate(unixTimestamp: number): string {
-  return new Date(unixTimestamp * 1000).toLocaleString([], {
-    weekday: 'short',
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  return messageDateFormatter.format(new Date(unixTimestamp * 1000));
 }
 
 function AddressList({ addresses }: { addresses: MessageDetail['from'] }) {
@@ -56,6 +60,7 @@ export default function MessageView({
   messageId,
   onBack,
   onAddToTodo,
+  onAddToCalendar,
   onDelete,
   onArchive,
 }: MessageViewProps) {
@@ -136,6 +141,13 @@ export default function MessageView({
         >
           <CheckSquare size={16} />
           Add to To-Do
+        </button>
+        <button
+          onClick={onAddToCalendar}
+          className="flex items-center gap-2 border border-gray-300 text-gray-700 text-sm font-medium px-4 py-2 rounded-full hover:bg-gray-50 transition-colors"
+        >
+          <CalendarPlus size={16} />
+          Add to Calendar
         </button>
       </div>
 

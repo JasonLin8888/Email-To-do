@@ -1,6 +1,6 @@
 'use client';
 
-import { CheckCheck, Archive, Trash2, CheckSquare } from 'lucide-react';
+import { CheckCheck, Archive, Trash2, CheckSquare, CalendarPlus, GripVertical } from 'lucide-react';
 import type { MessageSummary } from '@/lib/email/types';
 
 interface MailRowProps {
@@ -12,20 +12,19 @@ interface MailRowProps {
   onArchive: () => void;
   onToggleRead: () => void;
   onAddToTodo: () => void;
+  onAddToCalendar: () => void;
+  onDragStart: (messageId: string) => void;
 }
+
+const dateFormatter = new Intl.DateTimeFormat('en-US', {
+  month: 'short',
+  day: 'numeric',
+  timeZone: 'UTC',
+});
 
 function formatTime(unixTimestamp: number): string {
   const date = new Date(unixTimestamp * 1000);
-  const now = new Date();
-  const isToday =
-    date.getDate() === now.getDate() &&
-    date.getMonth() === now.getMonth() &&
-    date.getFullYear() === now.getFullYear();
-
-  if (isToday) {
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  }
-  return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  return dateFormatter.format(date);
 }
 
 function getSenderName(from: MessageSummary['from']): string {
@@ -43,6 +42,8 @@ export default function MailRow({
   onArchive,
   onToggleRead,
   onAddToTodo,
+  onAddToCalendar,
+  onDragStart,
 }: MailRowProps) {
   const isUnread = message.unread;
 
@@ -54,8 +55,23 @@ export default function MailRow({
         ${selected ? 'bg-blue-50' : ''}
         hover:shadow-md hover:-translate-y-0.5 hover:z-10 hover:relative
       `}
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = 'copy';
+        e.dataTransfer.setData('application/x-email-message-id', message.id);
+        e.dataTransfer.setData('text/plain', message.id);
+        onDragStart(message.id);
+      }}
       onClick={onClick}
     >
+      {/* Drag handle */}
+      <div
+        className="shrink-0 w-4 h-5 flex items-center justify-center text-gray-300 group-hover:text-gray-500 cursor-grab active:cursor-grabbing"
+        title="Drag to Tasks"
+      >
+        <GripVertical size={14} />
+      </div>
+
       {/* Checkbox */}
       <div className="shrink-0 w-5 h-5 flex items-center justify-center">
         <input
@@ -141,6 +157,13 @@ export default function MailRow({
             title="Add to To-Do"
           >
             <CheckSquare size={16} />
+          </button>
+          <button
+            onClick={onAddToCalendar}
+            className="p-1.5 rounded-full hover:bg-gray-200 text-gray-500 hover:text-green-600 transition-colors"
+            title="Add to Calendar"
+          >
+            <CalendarPlus size={16} />
           </button>
         </div>
       </div>

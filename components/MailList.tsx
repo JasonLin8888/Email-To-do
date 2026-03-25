@@ -14,6 +14,8 @@ interface MailListProps {
   onArchive: (id: string) => void;
   onToggleRead: (id: string) => void;
   onAddToTodo: (id: string) => void;
+  onAddToCalendar: (id: string) => void;
+  onDragStart: (id: string) => void;
 }
 
 function SkeletonRow() {
@@ -37,6 +39,8 @@ export default function MailList({
   onArchive,
   onToggleRead,
   onAddToTodo,
+  onAddToCalendar,
+  onDragStart,
 }: MailListProps) {
   return (
     <div className="flex-1 overflow-y-auto bg-white">
@@ -60,6 +64,8 @@ export default function MailList({
             onArchive={() => onArchive(message.id)}
             onToggleRead={() => onToggleRead(message.id)}
             onAddToTodo={() => onAddToTodo(message.id)}
+            onAddToCalendar={() => onAddToCalendar(message.id)}
+            onDragStart={onDragStart}
           />
         ))
       )}
