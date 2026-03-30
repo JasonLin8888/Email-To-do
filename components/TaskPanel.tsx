@@ -235,7 +235,7 @@ export default function TaskPanel({
 
   return (
     <div
-      className={`flex flex-col h-full bg-white border-l border-gray-200 transition-colors ${isDragOver ? 'bg-blue-50' : ''}`}
+      className={`flex flex-col h-full bg-white border border-gray-200 rounded-2xl overflow-hidden transition-colors ${isDragOver ? 'bg-blue-50' : ''}`}
       onDragOver={(event) => {
         if (!canDropEmail(event)) return;
         event.preventDefault();
