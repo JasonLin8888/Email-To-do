@@ -1,6 +1,6 @@
 'use client';
 
-import { Menu, PenSquare, Inbox, Send, Mail, Trash2, Plus } from 'lucide-react';
+import { Menu, PenSquare, Inbox, Send, Mail, Star, Trash2, Plus } from 'lucide-react';
 
 interface Label {
   id: string;
@@ -22,6 +22,7 @@ const NAV_ITEMS = [
   { folder: 'INBOX', label: 'Inbox', Icon: Inbox },
   { folder: 'SENT', label: 'Sent', Icon: Send },
   { folder: 'ALL', label: 'All Mail', Icon: Mail },
+  { folder: 'YELLOW_STAR', label: 'Favorites', Icon: Star },
   { folder: 'TRASH', label: 'Trash', Icon: Trash2 },
 ];
 
@@ -102,17 +103,23 @@ export default function Sidebar({
               Labels
             </p>
             {labels.map((label) => (
-              <div
+              <button
                 key={label.id}
-                className="flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-200 rounded-r-full cursor-pointer"
+                onClick={() => onFolderChange(label.id)}
+                className={`flex w-full items-center gap-3 px-4 py-2 text-sm rounded-r-full transition-colors
+                  ${currentFolder === label.id
+                    ? 'bg-[#d3e3fd] text-gray-900'
+                    : 'text-gray-700 hover:bg-gray-200'
+                  }`}
                 style={{ borderRadius: '0 50px 50px 0' }}
+                aria-label={`Open label ${label.name}`}
               >
                 <span
                   className="w-3 h-3 rounded-full shrink-0"
                   style={{ backgroundColor: label.color ?? '#6b7280' }}
                 />
                 <span className="truncate">{label.name}</span>
-              </div>
+              </button>
             ))}
           </div>
         )}
