@@ -13,6 +13,7 @@ interface MailListProps {
   onDelete: (id: string) => void;
   onArchive: (id: string) => void;
   onToggleRead: (id: string) => void;
+  onToggleStar: (id: string) => void;
   onAddToTodo: (id: string) => void;
   onAddToCalendar: (id: string) => void;
   onDragStart: (id: string) => void;
@@ -38,6 +39,7 @@ export default function MailList({
   onDelete,
   onArchive,
   onToggleRead,
+  onToggleStar,
   onAddToTodo,
   onAddToCalendar,
   onDragStart,
@@ -63,6 +65,7 @@ export default function MailList({
             onDelete={() => onDelete(message.id)}
             onArchive={() => onArchive(message.id)}
             onToggleRead={() => onToggleRead(message.id)}
+            onToggleStar={() => onToggleStar(message.id)}
             onAddToTodo={() => onAddToTodo(message.id)}
             onAddToCalendar={() => onAddToCalendar(message.id)}
             onDragStart={onDragStart}

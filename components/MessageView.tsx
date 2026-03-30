@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import DOMPurify from 'dompurify';
-import { ArrowLeft, Reply, Archive, Trash2, CheckSquare, CalendarPlus } from 'lucide-react';
+import { ArrowLeft, Reply, Archive, Trash2, CheckSquare, CalendarPlus, Star } from 'lucide-react';
 import type { MessageDetail } from '@/lib/email/types';
 
 interface MessageViewProps {
@@ -12,6 +12,7 @@ interface MessageViewProps {
   onAddToCalendar: () => void;
   onDelete: () => void;
   onArchive: () => void;
+  onToggleStar: (messageId: string, currentStarred: boolean) => Promise<void>;
 }
 
 const messageDateFormatter = new Intl.DateTimeFormat('en-US', {
@@ -63,10 +64,12 @@ export default function MessageView({
   onAddToCalendar,
   onDelete,
   onArchive,
+  onToggleStar,
 }: MessageViewProps) {
   const [message, setMessage] = useState<MessageDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isStarred, setIsStarred] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -78,6 +81,7 @@ export default function MessageView({
         const data: MessageDetail = await r.json();
         if (!cancelled) {
           setMessage(data);
+          setIsStarred(Boolean(data.starred));
           setLoading(false);
         }
       } catch (e: unknown) {
@@ -95,6 +99,19 @@ export default function MessageView({
     return () => { cancelled = true; };
   }, [messageId]);
 
+  const handleToggleStar = async () => {
+    const previousValue = isStarred;
+    const nextValue = !previousValue;
+    setIsStarred(nextValue);
+
+    try {
+      await onToggleStar(messageId, previousValue);
+    } catch (e) {
+      console.error('Failed to update favorite state:', e);
+      setIsStarred(previousValue);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full bg-white rounded-xl shadow-sm overflow-hidden">
       {/* Toolbar */}
@@ -109,11 +126,12 @@ export default function MessageView({
 
         <div className="flex items-center gap-1 ml-2">
           <button
-            className="p-2 rounded-full hover:bg-gray-100 transition-colors text-gray-600"
-            title="Reply"
-            aria-label="Reply"
+            onClick={handleToggleStar}
+            className={`p-2 rounded-full hover:bg-gray-100 transition-colors ${isStarred ? 'text-yellow-500 hover:text-yellow-600' : 'text-gray-500 hover:text-yellow-500'}`}
+            title={isStarred ? 'Remove from favorites' : 'Add to favorites'}
+            aria-label={isStarred ? 'Remove from favorites' : 'Add to favorites'}
           >
-            <Reply size={18} />
+            <Star size={18} className={isStarred ? 'fill-current' : ''} />
           </button>
           <button
             onClick={onArchive}
@@ -148,6 +166,13 @@ export default function MessageView({
         >
           <CalendarPlus size={16} />
           Add to Calendar
+        </button>
+        <button
+          className="p-2 rounded-full hover:bg-gray-100 transition-colors text-gray-600"
+          title="Reply"
+          aria-label="Reply"
+        >
+          <Reply size={18} />
         </button>
       </div>
 

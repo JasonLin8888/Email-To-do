@@ -210,6 +210,16 @@ export async function markRead(
   });
 }
 
+export async function markStar(
+  messageId: string,
+  isStarred: boolean
+): Promise<void> {
+  await nylasRequest(`/v3/grants/${GRANT_ID}/messages/${messageId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ starred: isStarred }),
+  });
+}
+
 // ─── Folders ──────────────────────────────────────────────────────────────────
 
 export async function listFolders(): Promise<Folder[]> {

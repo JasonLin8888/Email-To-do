@@ -1,6 +1,6 @@
 'use client';
 
-import { CheckCheck, Archive, Trash2, CheckSquare, CalendarPlus, GripVertical } from 'lucide-react';
+import { CheckCheck, Archive, Trash2, CheckSquare, CalendarPlus, GripVertical, Star } from 'lucide-react';
 import type { MessageSummary } from '@/lib/email/types';
 
 interface MailRowProps {
@@ -11,6 +11,7 @@ interface MailRowProps {
   onDelete: () => void;
   onArchive: () => void;
   onToggleRead: () => void;
+  onToggleStar: () => void;
   onAddToTodo: () => void;
   onAddToCalendar: () => void;
   onDragStart: (messageId: string) => void;
@@ -41,11 +42,13 @@ export default function MailRow({
   onDelete,
   onArchive,
   onToggleRead,
+  onToggleStar,
   onAddToTodo,
   onAddToCalendar,
   onDragStart,
 }: MailRowProps) {
   const isUnread = message.unread;
+  const isStarred = message.starred;
 
   return (
     <div
@@ -130,6 +133,15 @@ export default function MailRow({
           className="hidden group-hover:flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
           onClick={(e) => e.stopPropagation()}
         >
+          <button
+            onClick={onToggleStar}
+            className={`p-1.5 rounded-full hover:bg-gray-200 transition-colors ${
+              isStarred ? 'text-yellow-500 hover:text-yellow-600' : 'text-gray-500 hover:text-yellow-500'
+            }`}
+            title={isStarred ? 'Remove from favorites' : 'Add to favorites'}
+          >
+            <Star size={16} className={isStarred ? 'fill-current' : ''} />
+          </button>
           <button
             onClick={onToggleRead}
             className="p-1.5 rounded-full hover:bg-gray-200 text-gray-500 hover:text-gray-800 transition-colors"

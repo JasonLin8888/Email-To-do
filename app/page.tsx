@@ -17,6 +17,38 @@ const TASK_PANEL_MIN_WIDTH = 280;
 const TASK_PANEL_MAX_WIDTH = 560;
 const MIN_EMAIL_PANEL_WIDTH = 420;
 
+const SYSTEM_LABEL_KEYS = new Set([
+  'inbox',
+  'sent',
+  'all',
+  'all mail',
+  'chat',
+  'trash',
+  'drafts',
+  'draft',
+  'spam',
+  'junk',
+  'archive',
+  'important',
+  'starred',
+  'yellow star',
+  'unread',
+  'favorites',
+]);
+
+function normalizeLabelKey(value: string | undefined): string {
+  return (value ?? '').trim().toLowerCase().replace(/[_-]+/g, ' ');
+}
+
+function isSystemLabel(folder: { id: string; name: string; displayName?: string }): boolean {
+  const keys = [
+    normalizeLabelKey(folder.id),
+    normalizeLabelKey(folder.name),
+    normalizeLabelKey(folder.displayName),
+  ];
+  return keys.some((key) => key.startsWith('category ') || SYSTEM_LABEL_KEYS.has(key));
+}
+
 export default function Home() {
   // ── Layout state ─────────────────────────────────────────────────────────
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -102,7 +134,7 @@ export default function Home() {
         // Use folders as labels for sidebar display
         setLabels(
           (folders as Array<{ id: string; name: string; displayName?: string }>)
-            .filter((f) => !['INBOX', 'SENT', 'TRASH', 'ALL', 'DRAFTS', 'SPAM'].includes(f.id.toUpperCase()))
+            .filter((f) => !isSystemLabel(f))
             .map((f) => ({ id: f.id, name: f.displayName ?? f.name }))
         );
       })
@@ -150,6 +182,32 @@ export default function Home() {
     setMessages((prev) =>
       prev.map((m) => (m.id === id ? { ...m, unread: !m.unread } : m))
     );
+  };
+
+  const handleToggleStar = async (id: string, currentStarred?: boolean) => {
+    const existingMessage = messages.find((m) => m.id === id);
+    const previousValue = typeof currentStarred === 'boolean'
+      ? currentStarred
+      : Boolean(existingMessage?.starred);
+    const nextValue = !previousValue;
+
+    const res = await fetch(`/api/messages/${id}/star`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isStarred: nextValue }),
+    });
+    if (!res.ok) {
+      throw new Error(await res.text());
+    }
+
+    setMessages((prev) => {
+      // In Favorites view, removing star should hide the message immediately.
+      if (currentFolder === 'YELLOW_STAR' && !nextValue) {
+        return prev.filter((m) => m.id !== id);
+      }
+
+      return prev.map((m) => (m.id === id ? { ...m, starred: nextValue } : m));
+    });
   };
 
   const handleAddToTodo = async (messageId: string) => {
@@ -299,8 +357,11 @@ export default function Home() {
     INBOX: 'Inbox',
     SENT: 'Sent',
     ALL: 'All Mail',
+    YELLOW_STAR: 'Favorites',
     TRASH: 'Trash',
   };
+
+  const activeFolderLabel = labels.find((label) => label.id === currentFolder)?.name;
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[#f6f8fc]">
@@ -366,11 +427,12 @@ export default function Home() {
                 onAddToCalendar={() => handleAddToCalendar(openMessageId)}
                 onDelete={() => handleDelete(openMessageId)}
                 onArchive={() => handleArchive(openMessageId)}
+                onToggleStar={handleToggleStar}
               />
             ) : (
               <>
                 <MailToolbar
-                  folder={folderDisplayName[currentFolder] ?? currentFolder}
+                  folder={folderDisplayName[currentFolder] ?? activeFolderLabel ?? currentFolder}
                   total={total}
                   offset={offset}
                   limit={LIMIT}
@@ -405,6 +467,7 @@ export default function Home() {
                   onDelete={handleDelete}
                   onArchive={handleArchive}
                   onToggleRead={handleToggleRead}
+                  onToggleStar={(id) => handleToggleStar(id)}
                   onAddToTodo={handleAddToTodo}
                   onAddToCalendar={handleAddToCalendar}
                   onDragStart={() => {
@@ -420,10 +483,29 @@ export default function Home() {
             aria-label="Resize to-do panel"
             aria-orientation="vertical"
             onMouseDown={handleTaskPanelResizeStart}
-            className={`mx-1 my-1 w-1.5 shrink-0 cursor-col-resize rounded-full transition-colors ${
-              isResizingTaskPanel ? 'bg-blue-300' : 'bg-transparent hover:bg-blue-200'
-            }`}
-          />
+            className="relative mx-1 my-1 w-3 shrink-0 cursor-col-resize"
+          >
+            <div
+              className={`absolute inset-y-0 left-1/2 -translate-x-1/2 w-px transition-colors ${
+                isResizingTaskPanel ? 'bg-blue-500' : 'bg-gray-300'
+              }`}
+            />
+            <div
+              className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-12 w-2 rounded-full border transition-colors ${
+                isResizingTaskPanel
+                  ? 'border-blue-400 bg-blue-100'
+                  : 'border-gray-300 bg-white hover:border-blue-300 hover:bg-blue-50'
+              }`}
+            >
+              <span
+                className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-[9px] font-semibold tracking-tight select-none ${
+                  isResizingTaskPanel ? 'text-blue-600' : 'text-gray-500'
+                }`}
+              >
+                {'<>'}
+              </span>
+            </div>
+          </div>
 
           {/* TASK PANEL */}
           <div
