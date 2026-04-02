@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { DragEvent } from 'react';
-import { Settings, Trash2, ExternalLink, Plus, CheckCircle2, Circle } from 'lucide-react';
+import { Trash2, ExternalLink, Plus, CheckCircle2, Circle, ClockFading, Pencil, X } from 'lucide-react';
 import type { EmailTask, TaskFieldDefinition } from '@/lib/email/types';
 
 interface TaskPanelProps {
@@ -29,25 +29,31 @@ const STATUS_COLORS: Record<EmailTask['status'], string> = {
   done: 'text-green-500',
 };
 
+const INTERNAL_ORDER_FIELD = '__taskOrder';
+
 function hasValidSourceLink(task: EmailTask): boolean {
   return Boolean(task.sourceLink?.messageId?.trim());
 }
 
 function TaskRow({
   task,
-  fields,
   onUpdate,
   onDelete,
   onOpenEmail,
 }: {
   task: EmailTask;
-  fields: TaskFieldDefinition[];
   onUpdate: (updates: Partial<EmailTask>) => void;
   onDelete: () => void;
   onOpenEmail?: (messageId: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [titleDraft, setTitleDraft] = useState(task.title);
+  const [showFieldModal, setShowFieldModal] = useState(false);
+  const [newFieldName, setNewFieldName] = useState('');
+  const [newFieldValue, setNewFieldValue] = useState('');
+  const [modalTitleDraft, setModalTitleDraft] = useState(task.title);
+  const [modalDeadlineDraft, setModalDeadlineDraft] = useState(task.deadline ?? '');
+  const [modalNotice, setModalNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const commitTitle = () => {
     setEditing(false);
@@ -66,156 +72,282 @@ function TaskRow({
     onUpdate({ customFields: nextCustomFields });
   };
 
-  return (
-    <div className="min-w-max flex items-center gap-2 px-3 py-2.5 border-b border-gray-100 hover:bg-gray-50 group transition-colors">
-      {/* Status toggle */}
-      <button
-        onClick={() => onUpdate({ status: STATUS_CYCLE[task.status] })}
-        className={`shrink-0 transition-colors ${STATUS_COLORS[task.status]} hover:opacity-80`}
-        title={`Status: ${task.status}`}
-      >
-        {isDone ? <CheckCircle2 size={18} /> : <Circle size={18} />}
-      </button>
+  const removeCustomField = (fieldId: string) => {
+    const nextCustomFields = { ...(task.customFields ?? {}) };
+    delete nextCustomFields[fieldId];
+    onUpdate({ customFields: nextCustomFields });
+  };
 
-      {/* Title */}
-      <div className="w-56 shrink-0 min-w-0">
-        {editing ? (
-          <input
-            autoFocus
-            value={titleDraft}
-            onChange={(e) => setTitleDraft(e.target.value)}
-            onBlur={commitTitle}
-            onKeyDown={(e) => {
+  const addCustomField = () => {
+    const key = newFieldName.trim();
+    if (!key) {
+      setModalNotice({ type: 'error', text: 'Field name is required. Please enter a field name.' });
+      return;
+    }
+    commitCustomField(key, newFieldValue);
+    setNewFieldName('');
+    setNewFieldValue('');
+    setModalNotice({ type: 'success', text: `Added field "${key}".` });
+  };
+
+  const openTaskModal = () => {
+    setModalTitleDraft(task.title);
+    setModalDeadlineDraft(task.deadline ?? '');
+    setModalNotice(null);
+    setShowFieldModal(true);
+  };
+
+  const saveTaskDetailsFromModal = () => {
+    const trimmedTitle = modalTitleDraft.trim();
+    onUpdate({
+      title: trimmedTitle || task.title,
+      deadline: modalDeadlineDraft || undefined,
+    });
+    setTitleDraft(trimmedTitle || task.title);
+    setModalNotice({ type: 'success', text: 'Task details saved.' });
+  };
+
+  const customFieldEntries = Object.entries(task.customFields ?? {}).filter(
+    ([fieldName]) => fieldName !== INTERNAL_ORDER_FIELD
+  );
+
+  return (
+    <div className="w-full rounded-xl border border-gray-200 bg-white p-3 shadow-sm hover:border-gray-300 transition-colors">
+      <div className="flex items-start gap-2">
+        {/* Status toggle */}
+        <button
+          onClick={() => onUpdate({ status: STATUS_CYCLE[task.status] })}
+          className={`mt-0.5 shrink-0 transition-colors ${STATUS_COLORS[task.status]} hover:opacity-80`}
+          title={`Status: ${task.status}`}
+        >
+          {task.status === 'done' ? <CheckCircle2 size={18} /> : task.status === 'in_progress' ? <ClockFading size={18} /> : <Circle size={18} />}
+        </button>
+
+        {/* Title + source */}
+        <div className="min-w-0 flex-1">
+          {editing ? (
+            <input
+              autoFocus
+              value={titleDraft}
+              onChange={(e) => setTitleDraft(e.target.value)}
+              onBlur={commitTitle}
+              onKeyDown={(e) => {
                 if (e.key === 'Enter') commitTitle();
                 if (e.key === 'Escape') setEditing(false);
               }}
-            className="w-full text-sm border-b border-blue-400 outline-none bg-transparent text-gray-900 py-0.5"
-          />
-        ) : (
-          <span
-            onClick={() => {
-              setTitleDraft(task.title);
-              setEditing(true);
-            }}
-            className={`text-sm cursor-text truncate block ${isDone ? 'line-through text-gray-400' : 'text-gray-800'}`}
-          >
-            {task.title || '(untitled)'}
-          </span>
-        )}
-
-        {/* Source email */}
-        {hasValidSourceLink(task) ? (
-          <div className="flex items-center gap-1 mt-0.5">
-            <span className="text-xs text-gray-400 truncate">
-              {task.sourceLink.sender} — {task.sourceLink.subject}
+              className="w-full text-sm border-b border-blue-400 outline-none bg-transparent text-gray-900 py-0.5"
+            />
+          ) : (
+            <span
+              onClick={() => {
+                setTitleDraft(task.title);
+                setEditing(true);
+              }}
+              className={`text-sm cursor-text block wrap-break-word ${isDone ? 'line-through text-gray-400' : 'text-gray-800'}`}
+            >
+              {task.title || '(untitled)'}
             </span>
-            {onOpenEmail && (
-              <button
-                onClick={() => onOpenEmail(task.sourceLink.messageId)}
-                className="shrink-0 text-gray-400 hover:text-blue-500 transition-colors"
-                title="Open source email"
-              >
-                <ExternalLink size={11} />
-              </button>
-            )}
-          </div>
-        ) : (
-          <div className="mt-0.5">
-            <span className="text-xs text-gray-400">Not linked to an email</span>
-          </div>
-        )}
+          )}
+
+          {hasValidSourceLink(task) ? (
+            <div className="flex items-start gap-1 mt-1">
+              <span className={`text-xs wrap-break-word ${isDone ? 'line-through text-gray-300' : 'text-gray-400'}`}>
+                {task.sourceLink.sender} - {task.sourceLink.subject}
+              </span>
+              {onOpenEmail && (
+                <button
+                  onClick={() => onOpenEmail(task.sourceLink.messageId)}
+                  className="mt-0.5 shrink-0 text-gray-400 hover:text-blue-500 transition-colors"
+                  title="Open source email"
+                >
+                  <ExternalLink size={11} />
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="mt-1">
+              <span className="text-xs text-gray-400">Not linked to an email</span>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Status + deadline */}
-      <div className="flex items-center gap-2 shrink-0">
-        <select
-          value={task.status}
-          onChange={(e) => onUpdate({ status: e.target.value as EmailTask['status'] })}
-          className="w-28 text-xs border border-gray-300 rounded px-1.5 py-0.5 bg-white text-gray-700"
-          title="Task status"
-        >
-          <option value="todo">To Do</option>
-          <option value="in_progress">In Progress</option>
-          <option value="done">Done</option>
-        </select>
+      <div className="mt-3">
         <input
           type="date"
           value={task.deadline ?? ''}
           onChange={(e) => onUpdate({ deadline: e.target.value || undefined })}
-          className="w-28 text-xs border border-gray-300 rounded px-1.5 py-0.5 bg-white text-gray-700 shrink-0"
+          className="w-full text-xs border border-gray-300 rounded px-2 py-1.5 bg-white text-gray-700"
           title="Due date"
         />
       </div>
 
-      {/* Custom field values */}
-      {fields.map((f) => {
-        const value = task.customFields?.[f.id] ?? '';
-        if (f.type === 'select') {
-          return (
-            <select
-              key={f.id}
-              value={value}
-              onChange={(e) => commitCustomField(f.id, e.target.value)}
-              className="w-28 text-xs border border-gray-300 rounded px-1.5 py-0.5 bg-white text-gray-700 shrink-0"
-              title={f.name}
-            >
-              <option value="">—</option>
-              {(f.options ?? []).map((opt) => (
-                <option key={opt} value={opt}>{opt}</option>
-              ))}
-            </select>
-          );
-        }
+      {customFieldEntries.length > 0 && (
+        <div className="mt-3 space-y-1.5 rounded-md border border-gray-100 bg-gray-50 p-2">
+          {customFieldEntries.map(([fieldName, fieldValue]) => (
+            <div key={fieldName} className={`text-xs wrap-break-word ${isDone ? 'line-through text-gray-400' : 'text-gray-600'}`}>
+              <span className={`font-medium ${isDone ? 'text-gray-500' : 'text-gray-700'}`}>{fieldName}:</span>{' '}
+              <span>{fieldValue || '-'}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
-        return (
-          <input
-            key={f.id}
-            type={f.type === 'date' ? 'date' : f.type === 'number' ? 'number' : 'text'}
-            defaultValue={value}
-            onBlur={(e) => commitCustomField(f.id, e.target.value)}
-            className="w-28 text-xs border border-gray-300 rounded px-1.5 py-0.5 bg-white text-gray-700 shrink-0"
-            title={f.name}
-          />
-        );
-      })}
+      <div className="mt-3 flex items-center justify-between">
+        <button
+          onClick={openTaskModal}
+          className="p-1.5 rounded-full text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+          title="Edit task fields"
+        >
+          <Pencil size={14} />
+        </button>
+        <button
+          onClick={onDelete}
+          className="p-1.5 rounded-full text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+          title="Delete task"
+        >
+          <Trash2 size={14} />
+        </button>
+      </div>
 
-      {/* Delete */}
-      <button
-        onClick={onDelete}
-        className="p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-red-500"
-        title="Delete task"
-      >
-        <Trash2 size={14} />
-      </button>
+      {showFieldModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white shadow-xl border border-gray-200">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+              <h3 className="text-sm font-semibold text-gray-800">Edit Task Fields</h3>
+              <button
+                onClick={() => setShowFieldModal(false)}
+                className="p-1 rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                aria-label="Close"
+              >
+                <X size={14} />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-3 max-h-[60vh] overflow-auto">
+              {modalNotice && (
+                <div
+                  className={`text-xs rounded-md px-2.5 py-2 border ${
+                    modalNotice.type === 'success'
+                      ? 'border-green-200 bg-green-50 text-green-700'
+                      : 'border-red-200 bg-red-50 text-red-700'
+                  }`}
+                >
+                  {modalNotice.text}
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <input
+                  type="text"
+                  value={modalTitleDraft}
+                  onChange={(e) => setModalTitleDraft(e.target.value)}
+                  placeholder="Task title"
+                  className="w-full text-xs border border-gray-300 rounded px-2 py-1.5 bg-white text-gray-700"
+                />
+                <input
+                  type="date"
+                  value={modalDeadlineDraft}
+                  onChange={(e) => setModalDeadlineDraft(e.target.value)}
+                  className="w-full text-xs border border-gray-300 rounded px-2 py-1.5 bg-white text-gray-700"
+                />
+                <button
+                  onClick={saveTaskDetailsFromModal}
+                  className="w-full text-xs font-medium rounded-md px-2 py-1.5 bg-gray-800 text-white hover:bg-gray-900 transition-colors"
+                >
+                  Save Task Details
+                </button>
+              </div>
+
+              {customFieldEntries.length === 0 ? (
+                <p className="text-xs text-gray-400">No extra fields yet.</p>
+              ) : (
+                customFieldEntries.map(([fieldName, fieldValue]) => (
+                  <div key={fieldName} className="flex items-center gap-2">
+                    <input
+                      value={fieldName}
+                      readOnly
+                      className="w-2/5 text-xs border border-gray-200 rounded px-2 py-1.5 bg-gray-50 text-gray-600"
+                    />
+                    <input
+                      value={fieldValue}
+                      onChange={(e) => commitCustomField(fieldName, e.target.value)}
+                      className="w-3/5 text-xs border border-gray-300 rounded px-2 py-1.5 bg-white text-gray-700"
+                    />
+                    <button
+                      onClick={() => removeCustomField(fieldName)}
+                      className="p-1 rounded-full text-gray-400 hover:text-red-500 hover:bg-red-50"
+                      title="Remove field"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                ))
+              )}
+
+              <div className="pt-2 border-t border-gray-100 space-y-2">
+                <input
+                  type="text"
+                  value={newFieldName}
+                  onChange={(e) => setNewFieldName(e.target.value)}
+                  placeholder="Field name"
+                  className="w-full text-xs border border-gray-300 rounded px-2 py-1.5 bg-white text-gray-700"
+                />
+                <input
+                  type="text"
+                  value={newFieldValue}
+                  onChange={(e) => setNewFieldValue(e.target.value)}
+                  placeholder="Field value"
+                  className="w-full text-xs border border-gray-300 rounded px-2 py-1.5 bg-white text-gray-700"
+                />
+                <button
+                  onClick={addCustomField}
+                  className="w-full text-xs font-medium rounded-md px-2 py-1.5 bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                >
+                  Add Field
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 export default function TaskPanel({
   tasks,
-  fields,
   onTaskUpdate,
   onTaskDelete,
-  onAddField,
   onAddTask,
   onEmailDrop,
   onOpenEmail,
   loading,
 }: TaskPanelProps) {
-  const [showFieldForm, setShowFieldForm] = useState(false);
-  const [newFieldName, setNewFieldName] = useState('');
-  const [newFieldType, setNewFieldType] = useState<TaskFieldDefinition['type']>('text');
   const [isDragOver, setIsDragOver] = useState(false);
+  const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
+  const [dragOverTaskId, setDragOverTaskId] = useState<string | null>(null);
 
-  const handleAddField = () => {
-    if (!newFieldName.trim()) return;
-    onAddField({ name: newFieldName.trim(), type: newFieldType });
-    setNewFieldName('');
-    setNewFieldType('text');
-    setShowFieldForm(false);
-  };
+  const orderedTasks = useMemo(() => {
+    const getOrder = (task: EmailTask): number | null => {
+      const raw = task.customFields?.[INTERNAL_ORDER_FIELD];
+      if (!raw) return null;
+      const parsed = Number(raw);
+      return Number.isFinite(parsed) ? parsed : null;
+    };
 
-  const todoCount = tasks.filter((t) => t.status !== 'done').length;
+    return [...tasks].sort((a, b) => {
+      const aOrder = getOrder(a);
+      const bOrder = getOrder(b);
+
+      if (aOrder !== null && bOrder !== null) return aOrder - bOrder;
+      if (aOrder !== null) return -1;
+      if (bOrder !== null) return 1;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+  }, [tasks]);
+
+  const todoCount = orderedTasks.filter((t) => t.status !== 'done').length;
 
   const handleAddTask = () => {
     const title = window.prompt('Task title:');
@@ -225,12 +357,33 @@ export default function TaskPanel({
   };
 
   const getDraggedMessageId = (event: DragEvent<HTMLDivElement>) => {
-    return event.dataTransfer.getData('application/x-email-message-id') || event.dataTransfer.getData('text/plain');
+    return event.dataTransfer.getData('application/x-email-message-id');
   };
 
   const canDropEmail = (event: DragEvent<HTMLDivElement>) => {
     if (!onEmailDrop) return false;
-    return event.dataTransfer.types.includes('application/x-email-message-id') || event.dataTransfer.types.includes('text/plain');
+    return event.dataTransfer.types.includes('application/x-email-message-id');
+  };
+
+  const handleTaskReorder = (fromTaskId: string, toTaskId: string) => {
+    if (fromTaskId === toTaskId) return;
+
+    const fromIndex = orderedTasks.findIndex((task) => task.id === fromTaskId);
+    const toIndex = orderedTasks.findIndex((task) => task.id === toTaskId);
+    if (fromIndex < 0 || toIndex < 0) return;
+
+    const nextOrder = [...orderedTasks];
+    const [movedTask] = nextOrder.splice(fromIndex, 1);
+    nextOrder.splice(toIndex, 0, movedTask);
+
+    nextOrder.forEach((task, index) => {
+      onTaskUpdate(task.id, {
+        customFields: {
+          ...(task.customFields ?? {}),
+          [INTERNAL_ORDER_FIELD]: String(index),
+        },
+      });
+    });
   };
 
   return (
@@ -262,83 +415,71 @@ export default function TaskPanel({
           </span>
         )}
         <div className="flex-1" />
-        <button
-          onClick={() => setShowFieldForm((p) => !p)}
-          className="p-1.5 rounded-full hover:bg-gray-100 transition-colors text-gray-500"
-          title="Manage custom fields"
-        >
-          <Settings size={16} />
-        </button>
       </div>
-
-      {/* Custom field form */}
-      {showFieldForm && (
-        <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center gap-2 flex-wrap">
-          <input
-            type="text"
-            placeholder="Field name"
-            value={newFieldName}
-            onChange={(e) => setNewFieldName(e.target.value)}
-            className="border border-gray-300 rounded-md px-2 py-1 text-sm focus:outline-none focus:border-blue-400 flex-1 min-w-25"
-          />
-          <select
-            value={newFieldType}
-            onChange={(e) => setNewFieldType(e.target.value as TaskFieldDefinition['type'])}
-            className="border border-gray-300 rounded-md px-2 py-1 text-sm focus:outline-none"
-          >
-            <option value="text">Text</option>
-            <option value="date">Date</option>
-            <option value="number">Number</option>
-            <option value="select">Select</option>
-          </select>
-          <button
-            onClick={handleAddField}
-            className="bg-[#1a73e8] text-white text-sm px-3 py-1 rounded-md hover:bg-[#1765cc] transition-colors"
-          >
-            Add
-          </button>
-        </div>
-      )}
 
       {/* Task list */}
       <div className="flex-1 overflow-auto">
         {loading ? (
-          <div className="flex flex-col gap-0">
+          <div className="p-3 flex flex-col gap-3">
             {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="flex items-center gap-2 px-3 py-3 border-b border-gray-100 animate-pulse">
-                <div className="w-4 h-4 rounded-full bg-gray-200 shrink-0" />
-                <div className="flex-1 h-4 rounded bg-gray-200" />
+              <div key={i} className="rounded-xl border border-gray-100 p-3 animate-pulse">
+                <div className="h-4 w-3/4 rounded bg-gray-200" />
+                <div className="mt-2 h-3 w-full rounded bg-gray-100" />
+                <div className="mt-3 h-8 w-full rounded bg-gray-100" />
               </div>
             ))}
           </div>
-        ) : tasks.length === 0 ? (
+        ) : orderedTasks.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-3 text-gray-400 py-16">
             <CheckCircle2 size={40} strokeWidth={1.5} />
             <p className="text-sm font-medium">No tasks yet</p>
             <p className="text-xs text-center px-4">Add emails to your to-do list using the task button.</p>
           </div>
         ) : (
-          <div className="min-w-max">
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 border-b border-gray-100 text-xs text-gray-500 font-medium">
-              <div className="w-5 shrink-0" />
-              <div className="w-56 shrink-0">Task</div>
-              <div className="w-28 shrink-0">Status</div>
-              <div className="w-20 shrink-0">Due</div>
-              {fields.map((f) => (
-                <div key={f.id} className="w-28 shrink-0 truncate">{f.name}</div>
-              ))}
-              <div className="w-5 shrink-0" />
-            </div>
-
-            {tasks.map((task) => (
-              <TaskRow
+          <div className="p-3 flex flex-col gap-3">
+            {orderedTasks.map((task) => (
+              <div
                 key={task.id}
-                task={task}
-                fields={fields}
-                onUpdate={(updates) => onTaskUpdate(task.id, updates)}
-                onDelete={() => onTaskDelete(task.id)}
-                onOpenEmail={onOpenEmail}
-              />
+                draggable
+                onDragStart={(event) => {
+                  event.dataTransfer.effectAllowed = 'move';
+                  event.dataTransfer.setData('application/x-task-id', task.id);
+                  setDraggedTaskId(task.id);
+                }}
+                onDragOver={(event) => {
+                  if (draggedTaskId && draggedTaskId !== task.id) {
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = 'move';
+                    setDragOverTaskId(task.id);
+                  }
+                }}
+                onDragLeave={() => {
+                  if (dragOverTaskId === task.id) {
+                    setDragOverTaskId(null);
+                  }
+                }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  const fromTaskId = event.dataTransfer.getData('application/x-task-id') || draggedTaskId;
+                  if (!fromTaskId) return;
+                  handleTaskReorder(fromTaskId, task.id);
+                  setDraggedTaskId(null);
+                  setDragOverTaskId(null);
+                }}
+                onDragEnd={() => {
+                  setDraggedTaskId(null);
+                  setDragOverTaskId(null);
+                }}
+                className={`rounded-xl transition-shadow ${dragOverTaskId === task.id ? 'ring-2 ring-blue-200' : ''}`}
+                title="Drag to reorder"
+              >
+                <TaskRow
+                  task={task}
+                  onUpdate={(updates) => onTaskUpdate(task.id, updates)}
+                  onDelete={() => onTaskDelete(task.id)}
+                  onOpenEmail={onOpenEmail}
+                />
+              </div>
             ))}
           </div>
         )}

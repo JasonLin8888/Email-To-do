@@ -8,6 +8,7 @@ import type { MessageDetail } from '@/lib/email/types';
 interface MessageViewProps {
   messageId: string;
   isInTodo: boolean;
+  isAddingToCalendar: boolean;
   onBack: () => void;
   onAddToTodo: () => void;
   onAddToCalendar: () => void;
@@ -61,6 +62,7 @@ function SkeletonView() {
 export default function MessageView({
   messageId,
   isInTodo,
+  isAddingToCalendar,
   onBack,
   onAddToTodo,
   onAddToCalendar,
@@ -169,10 +171,15 @@ export default function MessageView({
         </button>
         <button
           onClick={onAddToCalendar}
-          className="flex items-center gap-2 border border-gray-300 text-gray-700 text-sm font-medium px-4 py-2 rounded-full hover:bg-gray-50 transition-colors"
+          disabled={isAddingToCalendar}
+          className={`flex items-center gap-2 border text-sm font-medium px-4 py-2 rounded-full transition-colors ${
+            isAddingToCalendar
+              ? 'border-gray-200 text-gray-400 bg-gray-50 cursor-not-allowed'
+              : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+          }`}
         >
           <CalendarPlus size={16} />
-          Add to Calendar
+          {isAddingToCalendar ? 'Adding...' : 'Add to Calendar'}
         </button>
         <button
           className="p-2 rounded-full hover:bg-gray-100 transition-colors text-gray-600"

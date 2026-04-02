@@ -63,9 +63,11 @@ export default function Home() {
   const [messagesLoading, setMessagesLoading] = useState(true);
   const [total, setTotal] = useState<number | undefined>(undefined);
   const [offset, setOffset] = useState(0);
+  const [hasNextPage, setHasNextPage] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [pendingQuery, setPendingQuery] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [calendarPendingIds, setCalendarPendingIds] = useState<Set<string>>(new Set());
 
   // ── Labels ───────────────────────────────────────────────────────────────
   const [labels, setLabels] = useState<Array<{ id: string; name: string; color?: string }>>([]);
@@ -86,21 +88,36 @@ export default function Home() {
   const fetchMessages = useCallback(async () => {
     setMessagesLoading(true);
     try {
+      const isSecondPage = offset >= LIMIT;
+      const requestLimit = isSecondPage ? LIMIT * 2 : LIMIT;
+      const requestOffset = 0;
+      const apiFolder = currentFolder === 'ALL' ? undefined : currentFolder;
+
       const params = new URLSearchParams({
-        folder: currentFolder,
-        limit: String(LIMIT),
-        offset: String(offset),
+        limit: String(requestLimit),
+        offset: String(requestOffset),
       });
+      if (apiFolder) params.set('folder', apiFolder);
       if (searchQuery) params.set('query', searchQuery);
 
       const res = await fetch(`/api/messages?${params}`);
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
-      setMessages(data.messages ?? []);
+
+      const fetchedMessages: MessageSummary[] = data.messages ?? [];
+      if (isSecondPage) {
+        setMessages(fetchedMessages.slice(LIMIT, LIMIT * 2));
+        setHasNextPage(false);
+      } else {
+        setMessages(fetchedMessages.slice(0, LIMIT));
+        setHasNextPage(fetchedMessages.length > LIMIT);
+      }
+
       setTotal(data.total);
     } catch (err) {
       console.error('Failed to fetch messages:', err);
       setMessages([]);
+      setHasNextPage(false);
     } finally {
       setMessagesLoading(false);
     }
@@ -160,7 +177,7 @@ export default function Home() {
   };
 
   // ── Pagination ───────────────────────────────────────────────────────────
-  const hasNext = messages.length === LIMIT; // if we got a full page, there might be more
+  const hasNext = hasNextPage;
 
   // ── Email actions ────────────────────────────────────────────────────────
   const handleDelete = async (id: string) => {
@@ -245,9 +262,42 @@ export default function Home() {
     }
   };
 
-  const handleAddToCalendar = (messageId: string) => {
-    // Placeholder hook for future Google Calendar integration.
-    console.info('Add to Calendar clicked for message:', messageId);
+  const handleAddToCalendar = async (messageId: string) => {
+    if (calendarPendingIds.has(messageId)) {
+      return;
+    }
+
+    setCalendarPendingIds((prev) => {
+      const next = new Set(prev);
+      next.add(messageId);
+      return next;
+    });
+
+    try {
+      const res = await fetch('/api/calendar/from-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messageId }),
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || `HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+      const calendarName = data?.calendar?.name ? ` in ${data.calendar.name}` : '';
+      window.alert(`Calendar event created${calendarName}.`);
+    } catch (err) {
+      console.error('Add to calendar failed:', err);
+      window.alert('Failed to create calendar event. Please try again.');
+    } finally {
+      setCalendarPendingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(messageId);
+        return next;
+      });
+    }
   };
 
   // ── Selection ────────────────────────────────────────────────────────────
@@ -443,6 +493,7 @@ export default function Home() {
               <MessageView
                 messageId={openMessageId}
                 isInTodo={taskEmailIds.has(openMessageId)}
+                isAddingToCalendar={calendarPendingIds.has(openMessageId)}
                 onBack={() => setOpenMessageId(null)}
                 onAddToTodo={() => handleAddToTodo(openMessageId)}
                 onAddToCalendar={() => handleAddToCalendar(openMessageId)}
@@ -459,8 +510,8 @@ export default function Home() {
                   limit={LIMIT}
                   hasNext={hasNext}
                   onRefresh={fetchMessages}
-                  onPrev={() => setOffset((o) => Math.max(0, o - LIMIT))}
-                  onNext={() => setOffset((o) => o + LIMIT)}
+                  onPrev={() => setOffset(0)}
+                  onNext={() => setOffset(LIMIT)}
                   onSelectAll={handleSelectAll}
                   allSelected={selectedIds.size === messages.length && messages.length > 0}
                   loading={messagesLoading}
@@ -468,6 +519,7 @@ export default function Home() {
                 <MailList
                   messages={messages}
                   taskEmailIds={taskEmailIds}
+                  calendarPendingIds={calendarPendingIds}
                   loading={messagesLoading}
                   selectedIds={selectedIds}
                   onSelect={handleSelect}

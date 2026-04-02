@@ -18,7 +18,7 @@ import {
 
 const API_KEY = process.env.NYLAS_API_KEY!;
 const GRANT_ID = process.env.NYLAS_GRANT_ID!;
-const MAX_MESSAGE_PAGE_SIZE = 20;
+const MAX_MESSAGE_PAGE_SIZE = 40;
 
 function normalizeNylasBaseUrl(rawBaseUrl?: string): string {
   const fallback = 'https://api.us.nylas.com';
@@ -276,6 +276,58 @@ export async function createLabel(name: string): Promise<Label> {
     name: l.name ?? name,
     displayName: l.display_name ?? l.name ?? name,
     color: l.color,
+  };
+}
+
+// ─── Calendar ────────────────────────────────────────────────────────────────
+
+export interface CalendarSummary {
+  id: string;
+  name: string;
+  readOnly: boolean;
+}
+
+export async function listCalendars(): Promise<CalendarSummary[]> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data = await nylasRequest<any>(`/v3/grants/${GRANT_ID}/calendars`);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (data.data ?? []).map((calendar: any): CalendarSummary => ({
+    id: calendar.id,
+    name: calendar.name ?? calendar.id,
+    readOnly: Boolean(calendar.read_only),
+  }));
+}
+
+export async function createEvent(params: {
+  calendarId: string;
+  title: string;
+  description?: string;
+  location?: string;
+  startTime: number;
+  endTime: number;
+}): Promise<{ id: string; title: string }> {
+  const qs = new URLSearchParams({ calendar_id: params.calendarId });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data = await nylasRequest<any>(
+    `/v3/grants/${GRANT_ID}/events?${qs.toString()}`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        title: params.title,
+        description: params.description,
+        location: params.location,
+        when: {
+          start_time: params.startTime,
+          end_time: params.endTime,
+        },
+      }),
+    }
+  );
+
+  const event = data.data ?? data;
+  return {
+    id: event.id,
+    title: event.title ?? params.title,
   };
 }
 

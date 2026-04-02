@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { listMessages } from '@/lib/email/nylasClient';
 
-const MAX_MESSAGE_PAGE_SIZE = 20;
+const MAX_MESSAGE_PAGE_SIZE = 40;
 
 export async function GET(request: NextRequest) {
   try {

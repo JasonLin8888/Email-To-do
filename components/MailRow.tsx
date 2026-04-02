@@ -6,6 +6,7 @@ import type { MessageSummary } from '@/lib/email/types';
 interface MailRowProps {
   message: MessageSummary;
   isInTodo: boolean;
+  isAddingToCalendar: boolean;
   selected: boolean;
   onSelect: () => void;
   onClick: () => void;
@@ -38,6 +39,7 @@ function getSenderName(from: MessageSummary['from']): string {
 export default function MailRow({
   message,
   isInTodo,
+  isAddingToCalendar,
   selected,
   onSelect,
   onClick,
@@ -179,8 +181,13 @@ export default function MailRow({
           </button>
           <button
             onClick={onAddToCalendar}
-            className="p-1.5 rounded-full hover:bg-gray-200 text-gray-500 hover:text-green-600 transition-colors"
-            title="Add to Calendar"
+            disabled={isAddingToCalendar}
+            className={`p-1.5 rounded-full transition-colors ${
+              isAddingToCalendar
+                ? 'text-gray-300 cursor-not-allowed'
+                : 'hover:bg-gray-200 text-gray-500 hover:text-green-600'
+            }`}
+            title={isAddingToCalendar ? 'Adding to Calendar...' : 'Add to Calendar'}
           >
             <CalendarPlus size={16} />
           </button>
