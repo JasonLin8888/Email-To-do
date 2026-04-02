@@ -6,6 +6,7 @@ import MailRow from './MailRow';
 
 interface MailListProps {
   messages: MessageSummary[];
+  taskEmailIds: Set<string>;
   loading: boolean;
   selectedIds: Set<string>;
   onSelect: (id: string) => void;
@@ -32,6 +33,7 @@ function SkeletonRow() {
 
 export default function MailList({
   messages,
+  taskEmailIds,
   loading,
   selectedIds,
   onSelect,
@@ -59,6 +61,7 @@ export default function MailList({
           <MailRow
             key={message.id}
             message={message}
+            isInTodo={taskEmailIds.has(message.id)}
             selected={selectedIds.has(message.id)}
             onSelect={() => onSelect(message.id)}
             onClick={() => onOpen(message.id)}

@@ -6,7 +6,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const task = getTask(id);
+  const task = await getTask(id);
   if (!task) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   return NextResponse.json(task);
 }
@@ -18,7 +18,7 @@ export async function PATCH(
   try {
     const { id } = await params;
     const updates = await request.json();
-    const task = updateTask(id, updates);
+    const task = await updateTask(id, updates);
     if (!task) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     return NextResponse.json(task);
   } catch (err) {
@@ -32,7 +32,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const deleted = removeTask(id);
+  const deleted = await removeTask(id);
   if (!deleted) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   return NextResponse.json({ success: true });
 }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getMessage, inferTaskFromEmail } from '@/lib/email/nylasClient';
-import { createTask } from '@/lib/tasks/taskStore';
+import { createTask, getTaskBySourceEmailId } from '@/lib/tasks/taskStore';
 
 export async function POST(request: NextRequest) {
   try {
@@ -11,6 +11,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'messageId is required' }, { status: 400 });
     }
 
+    const existingTask = await getTaskBySourceEmailId(messageId);
+    if (existingTask) {
+      return NextResponse.json(existingTask);
+    }
+
     const message = await getMessage(messageId);
     const inference = inferTaskFromEmail(message);
 
@@ -19,7 +24,7 @@ export async function POST(request: NextRequest) {
         ? `${message.from[0].name} <${message.from[0].email}>`
         : (message.from?.[0]?.email ?? 'Unknown');
 
-    const task = createTask({
+    const task = await createTask({
       sourceEmailId: messageId,
       sourceThreadId: message.threadId,
       sourceLink: {
@@ -40,6 +45,15 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(task);
   } catch (err) {
+    if (
+      typeof err === 'object' &&
+      err !== null &&
+      'code' in err &&
+      String((err as { code: unknown }).code) === '23505'
+    ) {
+      return NextResponse.json({ error: 'Task already exists for this email' }, { status: 409 });
+    }
+
     const message = err instanceof Error ? err.message : 'Unknown error';
     return NextResponse.json({ error: message }, { status: 500 });
   }

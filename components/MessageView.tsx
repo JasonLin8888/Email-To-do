@@ -7,6 +7,7 @@ import type { MessageDetail } from '@/lib/email/types';
 
 interface MessageViewProps {
   messageId: string;
+  isInTodo: boolean;
   onBack: () => void;
   onAddToTodo: () => void;
   onAddToCalendar: () => void;
@@ -59,6 +60,7 @@ function SkeletonView() {
 
 export default function MessageView({
   messageId,
+  isInTodo,
   onBack,
   onAddToTodo,
   onAddToCalendar,
@@ -155,10 +157,15 @@ export default function MessageView({
 
         <button
           onClick={onAddToTodo}
-          className="flex items-center gap-2 bg-[#1a73e8] text-white text-sm font-medium px-4 py-2 rounded-full hover:bg-[#1765cc] transition-colors"
+          disabled={isInTodo}
+          className={`flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-full transition-colors ${
+            isInTodo
+              ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+              : 'bg-[#1a73e8] text-white hover:bg-[#1765cc]'
+          }`}
         >
           <CheckSquare size={16} />
-          Add to To-Do
+          {isInTodo ? 'In To-Do List' : 'Add to To-Do'}
         </button>
         <button
           onClick={onAddToCalendar}

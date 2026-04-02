@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import { Settings, UserCircle } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
@@ -77,6 +77,10 @@ export default function Home() {
   const [taskPanelWidth, setTaskPanelWidth] = useState(320);
   const [isResizingTaskPanel, setIsResizingTaskPanel] = useState(false);
   const splitPaneRef = useRef<HTMLDivElement | null>(null);
+  const taskEmailIds = useMemo(
+    () => new Set(tasks.map((task) => task.sourceEmailId).filter(Boolean)),
+    [tasks]
+  );
 
   // ── Fetch messages ───────────────────────────────────────────────────────
   const fetchMessages = useCallback(async () => {
@@ -211,15 +215,31 @@ export default function Home() {
   };
 
   const handleAddToTodo = async (messageId: string) => {
+    if (taskEmailIds.has(messageId)) {
+      return;
+    }
+
     try {
       const res = await fetch('/api/tasks/from-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messageId }),
       });
+      if (res.status === 409) {
+        await fetchTasks();
+        return;
+      }
       if (!res.ok) throw new Error(await res.text());
+
       const task = await res.json();
-      setTasks((prev) => [task, ...prev]);
+      setTasks((prev) => {
+        const hasExisting = prev.some((existing) =>
+          existing.sourceEmailId
+            ? existing.sourceEmailId === task.sourceEmailId
+            : existing.id === task.id
+        );
+        return hasExisting ? prev : [task, ...prev];
+      });
     } catch (err) {
       console.error('Failed to create task:', err);
     }
@@ -422,6 +442,7 @@ export default function Home() {
             {openMessageId ? (
               <MessageView
                 messageId={openMessageId}
+                isInTodo={taskEmailIds.has(openMessageId)}
                 onBack={() => setOpenMessageId(null)}
                 onAddToTodo={() => handleAddToTodo(openMessageId)}
                 onAddToCalendar={() => handleAddToCalendar(openMessageId)}
@@ -446,6 +467,7 @@ export default function Home() {
                 />
                 <MailList
                   messages={messages}
+                  taskEmailIds={taskEmailIds}
                   loading={messagesLoading}
                   selectedIds={selectedIds}
                   onSelect={handleSelect}

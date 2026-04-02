@@ -3,7 +3,7 @@ import { listTasks, createTask } from '@/lib/tasks/taskStore';
 
 export async function GET() {
   try {
-    const tasks = listTasks();
+    const tasks = await listTasks();
     return NextResponse.json(tasks);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
@@ -14,7 +14,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const task = createTask({
+    const task = await createTask({
       sourceEmailId: body.sourceEmailId ?? '',
       sourceThreadId: body.sourceThreadId,
       sourceLink: body.sourceLink ?? {

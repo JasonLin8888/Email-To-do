@@ -1,134 +1,231 @@
-/**
- * taskStore.ts
- *
- * In-memory task storage with a clear upgrade path to a real database.
- *
- * To replace with a database (e.g., Prisma, Drizzle, SQLite):
- * 1. Remove the in-memory Map stores below.
- * 2. Replace each function body with the corresponding DB query.
- * 3. Keep the same exported function signatures so API routes need no changes.
- */
-
+import { createClient } from '@/utils/supabase/server';
 import { EmailTask, TaskFieldDefinition, TaskStatus } from '../email/types';
 
-type TaskStoreState = {
-  tasks: Map<string, EmailTask>;
-  fields: Map<string, TaskFieldDefinition>;
-  seeded: boolean;
+type TaskRow = {
+  id: string;
+  source_email_id: string | null;
+  source_thread_id: string | null;
+  source_link: EmailTask['sourceLink'];
+  title: string;
+  description: string;
+  deadline: string | null;
+  status: TaskStatus;
+  custom_fields: Record<string, string>;
+  created_at: string;
+  updated_at: string;
 };
 
-// ─── Tiny UUID helper ─────────────────────────────────────────────────────────
-function newId(): string {
-  // crypto.randomUUID() is available in Node 19+ and modern browsers
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID();
-  }
-  return Math.random().toString(36).slice(2) + Date.now().toString(36);
-}
-
-// ─── In-memory stores ─────────────────────────────────────────────────────────
-
-const globalTaskStore = globalThis as typeof globalThis & {
-  __emailTodoTaskStore?: TaskStoreState;
+type FieldRow = {
+  id: string;
+  name: string;
+  type: TaskFieldDefinition['type'];
+  options: string[] | null;
 };
 
-const store: TaskStoreState = globalTaskStore.__emailTodoTaskStore ?? {
-  tasks: new Map<string, EmailTask>(),
-  fields: new Map<string, TaskFieldDefinition>(),
-  seeded: false,
-};
-
-globalTaskStore.__emailTodoTaskStore = store;
-
-const tasks = store.tasks;
-const fields = store.fields;
-
-// Seed a few default custom field definitions
-const defaultFields: TaskFieldDefinition[] = [
-  { id: 'field-priority', name: 'Priority', type: 'select', options: ['Low', 'Medium', 'High'] },
-  { id: 'field-status-custom', name: 'Status', type: 'select', options: ['Not Started', 'In Progress', 'Done'] },
-  { id: 'field-class', name: 'Class', type: 'text' },
-  { id: 'field-teacher', name: 'Teacher', type: 'text' },
-  { id: 'field-project', name: 'Project', type: 'text' },
-  { id: 'field-group', name: 'Group Members', type: 'text' },
+const defaultFields: Omit<TaskFieldDefinition, 'id'>[] = [
+  { name: 'Priority', type: 'select', options: ['Low', 'Medium', 'High'] },
+  { name: 'Status', type: 'select', options: ['Not Started', 'In Progress', 'Done'] },
+  { name: 'Class', type: 'text' },
+  { name: 'Teacher', type: 'text' },
+  { name: 'Project', type: 'text' },
+  { name: 'Group Members', type: 'text' },
 ];
-if (!store.seeded) {
-  for (const f of defaultFields) fields.set(f.id, f);
-  store.seeded = true;
-}
 
-// ─── Tasks ────────────────────────────────────────────────────────────────────
-
-export function listTasks(): EmailTask[] {
-  return Array.from(tasks.values()).sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-  );
-}
-
-export function getTask(id: string): EmailTask | undefined {
-  return tasks.get(id);
-}
-
-export function createTask(data: Omit<EmailTask, 'id' | 'createdAt' | 'updatedAt'>): EmailTask {
-  const now = new Date().toISOString();
-  const task: EmailTask = {
-    ...data,
-    id: newId(),
-    createdAt: now,
-    updatedAt: now,
+function mapTaskRow(row: TaskRow): EmailTask {
+  return {
+    id: row.id,
+    sourceEmailId: row.source_email_id ?? '',
+    sourceThreadId: row.source_thread_id ?? undefined,
+    sourceLink: row.source_link,
+    title: row.title,
+    description: row.description,
+    deadline: row.deadline ?? undefined,
+    status: row.status,
+    customFields: row.custom_fields ?? {},
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
-  tasks.set(task.id, task);
-  return task;
 }
 
-export function updateTask(
+function mapFieldRow(row: FieldRow): TaskFieldDefinition {
+  return {
+    id: row.id,
+    name: row.name,
+    type: row.type,
+    options: row.options ?? undefined,
+  };
+}
+
+async function ensureDefaultFields(): Promise<void> {
+  const supabase = createClient();
+  const { count, error } = await supabase
+    .from('task_fields')
+    .select('id', { count: 'exact', head: true });
+  if (error) throw error;
+
+  if ((count ?? 0) > 0) return;
+
+  const { error: insertError } = await supabase
+    .from('task_fields')
+    .insert(defaultFields.map((field) => ({
+      name: field.name,
+      type: field.type,
+      options: field.options ?? [],
+    })));
+  if (insertError) throw insertError;
+}
+
+export async function listTasks(): Promise<EmailTask[]> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('email_tasks')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return ((data ?? []) as TaskRow[]).map(mapTaskRow);
+}
+
+export async function getTask(id: string): Promise<EmailTask | undefined> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('email_tasks')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? mapTaskRow(data as TaskRow) : undefined;
+}
+
+export async function getTaskBySourceEmailId(sourceEmailId: string): Promise<EmailTask | undefined> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('email_tasks')
+    .select('*')
+    .eq('source_email_id', sourceEmailId)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? mapTaskRow(data as TaskRow) : undefined;
+}
+
+export async function createTask(
+  data: Omit<EmailTask, 'id' | 'createdAt' | 'updatedAt'>
+): Promise<EmailTask> {
+  const supabase = createClient();
+  const { data: inserted, error } = await supabase
+    .from('email_tasks')
+    .insert({
+      source_email_id: data.sourceEmailId || null,
+      source_thread_id: data.sourceThreadId ?? null,
+      source_link: data.sourceLink,
+      title: data.title,
+      description: data.description,
+      deadline: data.deadline ?? null,
+      status: data.status,
+      custom_fields: data.customFields ?? {},
+    })
+    .select('*')
+    .single();
+  if (error) throw error;
+  return mapTaskRow(inserted as TaskRow);
+}
+
+export async function updateTask(
   id: string,
   updates: Partial<Omit<EmailTask, 'id' | 'createdAt'>>
-): EmailTask | null {
-  const existing = tasks.get(id);
-  if (!existing) return null;
-  const updated: EmailTask = {
-    ...existing,
-    ...updates,
-    id,
-    createdAt: existing.createdAt,
-    updatedAt: new Date().toISOString(),
-  };
-  tasks.set(id, updated);
-  return updated;
+): Promise<EmailTask | null> {
+  const supabase = createClient();
+  const updatePayload: Record<string, unknown> = {};
+
+  if (updates.sourceEmailId !== undefined) updatePayload.source_email_id = updates.sourceEmailId;
+  if (updates.sourceThreadId !== undefined) updatePayload.source_thread_id = updates.sourceThreadId ?? null;
+  if (updates.sourceLink !== undefined) updatePayload.source_link = updates.sourceLink;
+  if (updates.title !== undefined) updatePayload.title = updates.title;
+  if (updates.description !== undefined) updatePayload.description = updates.description;
+  if (updates.deadline !== undefined) updatePayload.deadline = updates.deadline ?? null;
+  if (updates.status !== undefined) updatePayload.status = updates.status;
+  if (updates.customFields !== undefined) updatePayload.custom_fields = updates.customFields;
+
+  const { data, error } = await supabase
+    .from('email_tasks')
+    .update(updatePayload)
+    .eq('id', id)
+    .select('*')
+    .maybeSingle();
+  if (error) throw error;
+  return data ? mapTaskRow(data as TaskRow) : null;
 }
 
-export function removeTask(id: string): boolean {
-  return tasks.delete(id);
+export async function removeTask(id: string): Promise<boolean> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('email_tasks')
+    .delete()
+    .eq('id', id)
+    .select('id')
+    .maybeSingle();
+  if (error) throw error;
+  return Boolean(data);
 }
 
-export function updateTaskStatus(id: string, status: TaskStatus): EmailTask | null {
+export async function updateTaskStatus(id: string, status: TaskStatus): Promise<EmailTask | null> {
   return updateTask(id, { status });
 }
 
-// ─── Custom field definitions ─────────────────────────────────────────────────
-
-export function listFields(): TaskFieldDefinition[] {
-  return Array.from(fields.values());
+export async function listFields(): Promise<TaskFieldDefinition[]> {
+  await ensureDefaultFields();
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('task_fields')
+    .select('*')
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return ((data ?? []) as FieldRow[]).map(mapFieldRow);
 }
 
-export function addField(data: Omit<TaskFieldDefinition, 'id'>): TaskFieldDefinition {
-  const field: TaskFieldDefinition = { ...data, id: newId() };
-  fields.set(field.id, field);
-  return field;
+export async function addField(data: Omit<TaskFieldDefinition, 'id'>): Promise<TaskFieldDefinition> {
+  const supabase = createClient();
+  const { data: inserted, error } = await supabase
+    .from('task_fields')
+    .insert({
+      name: data.name,
+      type: data.type,
+      options: data.options ?? [],
+    })
+    .select('*')
+    .single();
+  if (error) throw error;
+  return mapFieldRow(inserted as FieldRow);
 }
 
-export function removeField(id: string): boolean {
-  return fields.delete(id);
+export async function removeField(id: string): Promise<boolean> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('task_fields')
+    .delete()
+    .eq('id', id)
+    .select('id')
+    .maybeSingle();
+  if (error) throw error;
+  return Boolean(data);
 }
 
-export function updateField(
+export async function updateField(
   id: string,
   updates: Partial<Omit<TaskFieldDefinition, 'id'>>
-): TaskFieldDefinition | null {
-  const existing = fields.get(id);
-  if (!existing) return null;
-  const updated = { ...existing, ...updates, id };
-  fields.set(id, updated);
-  return updated;
+): Promise<TaskFieldDefinition | null> {
+  const supabase = createClient();
+  const updatePayload: Record<string, unknown> = {};
+
+  if (updates.name !== undefined) updatePayload.name = updates.name;
+  if (updates.type !== undefined) updatePayload.type = updates.type;
+  if (updates.options !== undefined) updatePayload.options = updates.options;
+
+  const { data, error } = await supabase
+    .from('task_fields')
+    .update(updatePayload)
+    .eq('id', id)
+    .select('*')
+    .maybeSingle();
+  if (error) throw error;
+  return data ? mapFieldRow(data as FieldRow) : null;
 }

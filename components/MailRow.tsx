@@ -5,6 +5,7 @@ import type { MessageSummary } from '@/lib/email/types';
 
 interface MailRowProps {
   message: MessageSummary;
+  isInTodo: boolean;
   selected: boolean;
   onSelect: () => void;
   onClick: () => void;
@@ -36,6 +37,7 @@ function getSenderName(from: MessageSummary['from']): string {
 
 export default function MailRow({
   message,
+  isInTodo,
   selected,
   onSelect,
   onClick,
@@ -165,8 +167,13 @@ export default function MailRow({
           </button>
           <button
             onClick={onAddToTodo}
-            className="p-1.5 rounded-full hover:bg-gray-200 text-gray-500 hover:text-blue-600 transition-colors"
-            title="Add to To-Do"
+            disabled={isInTodo}
+            className={`p-1.5 rounded-full transition-colors ${
+              isInTodo
+                ? 'text-gray-300 cursor-not-allowed'
+                : 'hover:bg-gray-200 text-gray-500 hover:text-blue-600'
+            }`}
+            title={isInTodo ? 'Already in To-Do list' : 'Add to To-Do'}
           >
             <CheckSquare size={16} />
           </button>
