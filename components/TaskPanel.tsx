@@ -470,7 +470,9 @@ export default function TaskPanel({
                   setDraggedTaskId(null);
                   setDragOverTaskId(null);
                 }}
-                className={`rounded-xl transition-shadow ${dragOverTaskId === task.id ? 'ring-2 ring-blue-200' : ''}`}
+                className={`rounded-xl transition-all cursor-grab active:cursor-grabbing ${
+                  draggedTaskId === task.id ? 'opacity-80 scale-[0.99] shadow-md ring-2 ring-blue-300' : ''
+                } ${dragOverTaskId === task.id ? 'ring-2 ring-blue-200 bg-blue-50' : ''}`}
                 title="Drag to reorder"
               >
                 <TaskRow
